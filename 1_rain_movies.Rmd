@@ -3,6 +3,8 @@ title: "Rain Movies"
 author: "Matthew Ross"
 date: "11/7/2019"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 # Using R to make movies
@@ -22,6 +24,8 @@ library(lubridate)
 library(ggthemes)
 library(tmap)
 library(sf)
+install.packages("USAboundariesData")
+
 theme_set(theme_few()) # Set ggplot theme
 
 
@@ -58,6 +62,8 @@ fc <- riem_measures(station='FNL',date_start = '2018-10-01',
 
 View(fc)
 
+
+
 ```
 
 
@@ -65,7 +71,7 @@ View(fc)
 
 ```{r}
 
-daily_p <- fc %>% 
+daily_p_fr <- fc %>% 
   bind_rows(af_p) %>%
   mutate(date = as.Date(valid)) %>%
   group_by(date, station, lon, lat) %>%
@@ -75,6 +81,7 @@ daily_p <- fc %>%
             daily_p = sum(p01i,na.rm=T)) %>%
   as.data.frame() %>%
   as_tibble()
+
 
 ```
 
@@ -87,6 +94,8 @@ daily_p <- fc %>%
 
 slice_p <- daily_p %>%
   slice(1:20)
+
+slice_p
 
 p1 <- ggplot(slice_p,aes(x=date,y=mean_temp,color=station,group=station)) + 
   geom_point() +
@@ -148,14 +157,14 @@ tm_shape(co) +
 
 ```{r}
 
-
-  
 basemap <- tm_shape(co) + 
     tm_polygons() + 
   tm_shape(co_elev) +
     tm_raster(style='cont',
               palette = 'Greens',
               title='Elevation (m)') 
+
+basemap
 ```
 
 
@@ -164,7 +173,8 @@ basemap <- tm_shape(co) +
  
 full_dates <- unique(sf_p$date)
 
-sequence <- 1:length(full_dates)
+
+sequence <- 1:35
 saveVideo({
   for(i in sequence){
   sub_sf <- sf_p %>%
@@ -188,6 +198,7 @@ saveVideo({
                         title='Station'))
   }
 },movie.name = 'precip_flash.mp4',
+ffmpeg = "C:/Program Files/ffmpegx/bin/ffmpeg.exe",
   interval=0.05,
   ani.width=1000,
   ani.height=800)
@@ -274,6 +285,30 @@ saveVideo({
 
 # In Class work.
 
+## GGanimate
+
+Make a video showing the correlation between Air Force Academy and Fort Collins
+between the min, mean, and max temps. The movie should cover the full year. 
+
+```{r}
+
+
+maxmeanmin_plot <- daily_p_fr %>%
+  ggplot() +
+  geom_line(aes(x = date, y = mean_temp, color = station), linetype = "solid", size = 1) +
+  theme_few() +
+  geom_line(aes(x = date, y = min_temp, color = station), linetype = "longdash", size = 1) +
+  geom_line(aes(x = date, y = max_temp, color = station), linetype = "dotted", size = 1) +
+  scale_color_manual(values = c("red", "blue")) +
+  transition_reveal(date)
+
+
+animate(maxmeanmin_plot, nframes=nrow(daily_p))
+
+?scale_color_manual
+
+```
+
 ## Make a video of mean temperature differences for the full Colorado dataset
 (you need to download this [here](https://www.dropbox.com/s/s7zt18elgoh8q2b/DailyP.RData?dl=0)) first.
 
@@ -282,5 +317,15 @@ style (change the background, add other layers (like counties or cities)), etc..
 
 ```{r}
 load('DailyP.RData')
-```
+
+
+spatial_daily_p <- daily_p %>%
+  st_as_sf(.,coords=c('lon','lat'),crs=4326,remove=F)
+
+full_dates <- unique(spatial_daily_p$date)
+
+
+co_counties <- us_cities()
+
+Yes```
 
