@@ -24,7 +24,9 @@ library(lubridate)
 library(ggthemes)
 library(tmap)
 library(sf)
-install.packages("USAboundariesData")
+library(USAboundariesData)
+library(RColorBrewer)
+library(tmaptools)
 
 theme_set(theme_few()) # Set ggplot theme
 
@@ -140,7 +142,7 @@ sf_p <- daily_p %>%
   st_as_sf(coords=c('lon','lat'),crs=4326)
 
 
-co_elev <- elevatr::get_elev_raster(co,z=6)
+co_elev <- elevatr::get_elev_raster(co,z=8)
 
 tm_shape(co) + 
   tm_polygons() + 
@@ -174,7 +176,7 @@ basemap
 full_dates <- unique(sf_p$date)
 
 
-sequence <- 1:35
+sequence <- 1:10
 saveVideo({
   for(i in sequence){
   sub_sf <- sf_p %>%
@@ -218,7 +220,7 @@ all_co <- map(co_stations$id,~riem_measures(.x,date_start='2018-10-01',
                                          date_end = '2019-09-30'))
 stack_co <- do.call('rbind',all_co)
 
-daily_p <- stack_co %>% 
+daily_p_z <- stack_co %>% 
   mutate(date = as.Date(valid)) %>%
   group_by(date, station, lon, lat) %>%
   summarize(mean_temp = mean(tmpf,na.rm=T),
@@ -247,6 +249,7 @@ daily_sf <- daily_p %>%
 
 
 full_dates <- unique(daily_sf$date)
+
 
 sequence <- 1:length(full_dates)
 saveVideo({
@@ -291,21 +294,40 @@ Make a video showing the correlation between Air Force Academy and Fort Collins
 between the min, mean, and max temps. The movie should cover the full year. 
 
 ```{r}
+#Here, we make an animated plot of max min and mean temperature at the Air Force Academy and Fort Collins
+
+###Make a long dataframe where max, min, mean temperature are now a variable (named type)
+daily_p_fr_long <- daily_p_fr %>%
+  gather(., key = "type", value = "temperature", mean_temp:max_temp)
 
 
-maxmeanmin_plot <- daily_p_fr %>%
+###function to remove "_" from facet wrap labels
+remover <- function(string){
+  
+  str_replace_all(string, "_", " ")
+  
+}
+
+
+###Construct plot of max, mean, min temp at 
+###Air Force Academy and Fort Collins
+maxmeanmin_plot <- daily_p_fr_long %>%
   ggplot() +
-  geom_line(aes(x = date, y = mean_temp, color = station), linetype = "solid", size = 1) +
+  geom_line(aes(x = date, y = temperature, color = station, linetype = type), size = 0.5) +
   theme_few() +
-  geom_line(aes(x = date, y = min_temp, color = station), linetype = "longdash", size = 1) +
-  geom_line(aes(x = date, y = max_temp, color = station), linetype = "dotted", size = 1) +
   scale_color_manual(values = c("red", "blue")) +
+  scale_linetype_manual(values = c("solid", "longdash", "dotted")) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  labs(title = "Temps at Air Force Academy and Fort Collins") +
+  facet_wrap(~type, labeller = as_labeller(remover)) +
+  guides(linetype = FALSE) +
   transition_reveal(date)
 
 
-animate(maxmeanmin_plot, nframes=nrow(daily_p))
+  
+###Animate the plot
+animate(maxmeanmin_plot, nframes=100)
 
-?scale_color_manual
 
 ```
 
@@ -316,16 +338,90 @@ The video should look similar to the one above, but I want you to choose your ow
 style (change the background, add other layers (like counties or cities)), etc...
 
 ```{r}
+
+#load data
 load('DailyP.RData')
 
 
+#Here, we set up and make the basemap
+###state outline
+co <- us_states(states = "Colorado") 
+
+###Colorado counties
+co_counties <- us_counties(states = "Colorado") 
+
+###Some Colorado cities
+co_cities <- us_cities() %>%
+  filter(state_name == "Colorado") %>%
+  filter(city %in% c("Colorado Springs", "Denver", "Fort Collins", "Grand Junction", 
+                   "Durango", "Pueblo", "Glenwood Springs"))
+
+###Make hillshade
+county_elev <- crop(co_elev, co_counties)
+county_elev_slope <- terrain(county_elev, opt = "slope")
+county_elev_aspect <- terrain(county_elev, opt = "aspect")
+county_hillshade <- hillShade(county_elev_slope, county_elev_aspect, angle = 45, direction = 0)
+
+  
+###basemap
+basemap_new <- tm_shape(county_hillshade) + 
+  tm_raster(style = "cont", palette = "Greys", legend.show = FALSE) +
+  tm_shape(co_counties) +
+  tm_polygons(alpha = 0.5, border.alpha = 1, border.col = "white") +
+  tm_shape(co_cities) +
+  tm_symbols(size = 0.5, col = "black", shape = 15) +
+  tm_text("city", xmod = -1, ymod = -0.7, fontfamily = "sans", size = 1.3) 
+
+basemap_new
+
+#Here, we make a movie my dudes
+###Make daily data spatial
 spatial_daily_p <- daily_p %>%
   st_as_sf(.,coords=c('lon','lat'),crs=4326,remove=F)
 
+
+###Extract days from data
 full_dates <- unique(spatial_daily_p$date)
+full_dates
 
+###Make video
+sequence <- 1:35
+saveVideo({
+  
+  for(i in sequence){
+    
+    
+    sub_temp_sf <- spatial_daily_p %>%
+      filter(date == full_dates[i])
+    
+    if(nrow(sub_temp_sf)>0) {
+      
+      finalmap_temperature <- basemap_new +
+      tm_shape(sub_temp_sf) +
+      tm_symbols(col = "mean_temp", 
+                 palette = viridis::plasma(n = 50),
+                 title.col = " Mean Temperature (F)")
+    }
+    
+    
+    else{finalmap_temperature <- basemap_new}
+    
+    print(finalmap_temperature + 
+            tm_layout(title = as.character(full_dates[i]),
+                      title.size = 2.5,
+                      legend.text.size = 1.3,
+                      legend.text.fontfamily = "sans",
+                      legend.title.size = 1.5,
+                      legend.title.fontfamily = "sans"))
+    
+  }
+    
+  
+},movie.name = "mean_temp.mp4",
+  interval=0.12,
+  ani.width=1000,
+  ani.height=800,
+  ffmpeg = "C:/Program Files/ffmpegx/bin/ffmpeg.exe")
 
-co_counties <- us_cities()
-
-Yes```
+```
 
