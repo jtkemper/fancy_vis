@@ -1,7 +1,7 @@
 ---
 title: "Rain Movies"
-author: "Matthew Ross"
-date: "11/7/2019"
+author: "Matthew Ross & John Kemper"
+date: "11/15/2019"
 output: html_document
 editor_options: 
   chunk_output_type: console
