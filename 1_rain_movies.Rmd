@@ -385,7 +385,8 @@ full_dates <- unique(spatial_daily_p$date)
 full_dates
 
 ###Make video
-sequence <- 1:35
+sequence <- 1:length(full_dates)
+
 saveVideo({
   
   for(i in sequence){
